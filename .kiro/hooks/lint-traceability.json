@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Lint spec traceability on save",
+      "description": "Ensures every requirement is covered by a task and every task references a real requirement.",
+      "trigger": "PostFileSave",
+      "matcher": "\\.kiro/specs/.*/(design|tasks)\\.md$",
+      "action": {
+        "type": "command",
+        "command": "python3 tools/context-lint/context_lint.py traceability"
+      },
+      "timeout": 30
+    }
+  ]
+}

@@ -47,6 +47,34 @@ dettaglio è in `.kiro/steering/context-governance.md` (si richiama con `#contex
   — attivati dal file su cui si lavora (`fileMatch`).
 - `context-governance.md` — manuale.
 
+### Specs attuali
+
+Sette feature spec in `.kiro/specs/`, formato Requirements-First (EARS), 45 requisiti tracciati
+fino ai task. Ogni spec cita le regole Steering per ID.
+
+| Spec | Codice | Capacità |
+| --- | --- | --- |
+| `cloud-graph-model` | GRAPH | Grafo canonico, ingestion read-only, trust cross-cloud |
+| `misconfiguration-detection` | DETECT | Regole data-driven → Finding |
+| `attack-path-analysis` | PATHS | Catalogo tecniche, composizione path, scoring esplicito |
+| `attack-simulation` | SIM | Esecuzione step-by-step sul twin, modalità Simulated/Live |
+| `remediation-whatif` | REMED | Patch al grafo, ri-simulazione, delta prima/dopo |
+| `agent-orchestration` | ORCH | Control Plane, delega agli agenti, autonomia limitata |
+| `probe-lifecycle` | PROBE | Sonde deploy-anywhere, scope, audit, kill-switch |
+
+### Skills attuali
+
+Sei skill in `.kiro/skills/`, attivate dalla `description`:
+
+| Skill | Si attiva quando |
+| --- | --- |
+| `cloud-threat-modeling` | si progetta/rivede una feature o uno scenario |
+| `multicloud-iam-analysis` | si lavora su permessi, ruoli, trust, federation |
+| `attack-path-analysis` | si definiscono tecniche, archi o l'algoritmo dei path |
+| `attack-scenario-design` | si crea uno scenario o un dataset lab |
+| `security-remediation` | si propone o valida una remediation |
+| `context-consistency-audit` | si modifica il contesto (meta-skill) |
+
 ### Validatore del contesto
 
 `tools/context-lint/` controlla formato, unicità degli ID, riferimenti `#[[file:]]` e (nelle fasi
@@ -55,6 +83,21 @@ successive) la tracciabilità requisito ↔ task. Solo stdlib Python, eseguibile
 ```
 python3 tools/context-lint/context_lint.py all
 ```
+
+### Hooks attuali
+
+Otto hook in `.kiro/hooks/`, tutti sottili: delegano la logica a `context-lint` (unica fonte).
+
+| Hook | Trigger | Cosa fa |
+| --- | --- | --- |
+| `guard-no-cloud-mutation` | PreToolUse | Blocca (exit 2) comandi shell che modificano i cloud — `SEC-01` |
+| `lint-steering` | PostFileSave `steering/*.md` | Valida frontmatter, ID regola, riferimenti |
+| `lint-requirements` | PostFileSave `requirements.md` | ID requisito, criteri EARS, regole citate esistenti |
+| `lint-traceability` | PostFileSave `design/tasks.md` | Ogni REQ coperto da un task e viceversa |
+| `lint-skill` | PostFileSave `SKILL.md` | Frontmatter skill e riferimenti ai file |
+| `pretask-gate` | PreTaskExec | Blocca un task se la tracciabilità è rotta |
+| `posttask-verify` | PostTaskExec | Lint completo a fine task |
+| `stop-consistency` | Stop | Lint completo a fine turno; un errore innesca una correzione |
 
 ### Decisioni architetturali (indice AD)
 

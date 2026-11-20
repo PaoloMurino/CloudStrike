@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Pre-task traceability gate",
+      "description": "Blocks starting a spec task when requirement/task traceability is broken (exit 2 denies execution).",
+      "trigger": "PreTaskExec",
+      "action": {
+        "type": "command",
+        "command": "python3 tools/context-lint/context_lint.py traceability || exit 2"
+      },
+      "timeout": 30
+    }
+  ]
+}

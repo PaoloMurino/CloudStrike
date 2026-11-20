@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Lint skill on save",
+      "description": "Validates SKILL.md frontmatter (name matches folder, description length) and bundled file references.",
+      "trigger": "PostFileSave",
+      "matcher": "\\.kiro/skills/.*/SKILL\\.md$",
+      "action": {
+        "type": "command",
+        "command": "python3 tools/context-lint/context_lint.py skill"
+      },
+      "timeout": 30
+    }
+  ]
+}

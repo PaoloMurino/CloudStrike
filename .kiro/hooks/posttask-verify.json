@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Post-task verify",
+      "description": "Runs the full context-lint after a spec task completes to catch regressions early.",
+      "trigger": "PostTaskExec",
+      "action": {
+        "type": "command",
+        "command": "python3 tools/context-lint/context_lint.py all"
+      },
+      "timeout": 60
+    }
+  ]
+}

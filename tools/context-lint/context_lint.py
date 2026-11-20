@@ -5,9 +5,13 @@ Validates the Context Engineering artifacts (steering, specs, skills, hooks) for
 format and cross-reference consistency. Standard library only (no dependencies),
 so it can run from any hook on any machine.
 
-Phase 0 scope (implemented now): steering format + rule-ID uniqueness, broken
-`#[[file:]]` references, and the `always`-steering line budget.
-Later phases fill in: requirements (EARS/IDs), traceability (REQ<->task), skills.
+Checks implemented:
+- steering     : frontmatter, inclusion mode, rule-ID uniqueness, broken file refs, always-budget.
+- requirements : unique REQ IDs, EARS ('SHALL') present, governing-rule refs resolve to steering.
+- traceability : every REQ covered by a task, every task REQ exists (per spec).
+- skill        : SKILL.md frontmatter (name==folder, <=64, description<=1024) + bundled file refs.
+
+Checks run clean when the artifact type does not exist yet, so hooks can be installed early.
 
 Usage:
     python3 context_lint.py all           # run every available check
@@ -36,6 +40,13 @@ _NS = r"(?:SEC|ARC|AG|MC|QA|SPEC|PROV-AWS|PROV-AZ|PROV-GCP)-\d{2}"
 RULE_DEF_RE = re.compile(rf"(?:^|\n)\s*[-*]?\s*\*\*({_NS})\b")
 FILE_REF_RE = re.compile(r"#\[\[file:([^\]]+)\]\]")
 VALID_INCLUSION = {"always", "fileMatch", "manual", "auto"}
+
+# Requirement IDs: REQ-<SPEC>-NN, defined as a bold or heading lead, referenced
+# elsewhere (e.g. in tasks via "_Requirements: REQ-GRAPH-01_").
+REQ_ID_RE = re.compile(r"(REQ-[A-Z]+-\d{2})(?!\d)")
+REQ_DEF_RE = re.compile(r"(?:^|\n)(?:#{1,6}\s*|\s*[-*]?\s*\*\*)(REQ-[A-Z]+-\d{2})\b")
+ANY_RULE_REF_RE = re.compile(rf"\b({_NS})\b")
+SKILL_NAME_RE = re.compile(r"^[a-z0-9-]{1,64}$")
 
 # Budget: keep the always-loaded steering lean so it fits every prompt.
 ALWAYS_LINE_BUDGET = 900
@@ -83,6 +94,18 @@ def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
             k, _, v = line.partition(":")
             fm[k.strip()] = v.strip()
     return fm, body
+
+
+def collect_steering_ids() -> set[str]:
+    """All rule IDs defined across steering files (used for reference checks)."""
+    ids: set[str] = set()
+    if not STEERING.is_dir():
+        return ids
+    for md in STEERING.glob("*.md"):
+        _, body = parse_frontmatter(md.read_text(encoding="utf-8"))
+        for m in RULE_DEF_RE.finditer(body):
+            ids.add(m.group(1))
+    return ids
 
 
 def check_steering(report: Report) -> None:
@@ -136,22 +159,104 @@ def check_steering(report: Report) -> None:
 
 
 def check_requirements(report: Report) -> None:
-    # Phase 2: parse .kiro/specs/*/requirements.md for REQ IDs + EARS criteria.
+    """SPEC-02/03/04: unique REQ IDs, EARS criteria, valid governing-rule refs."""
     specs = KIRO / "specs"
     if not specs.is_dir():
         print("context-lint: no specs yet (requirements check skipped)")
         return
-    print("context-lint: requirements check not implemented yet (phase 2)")
+
+    steering_ids = collect_steering_ids()
+    defined: dict[str, str] = {}
+    count = 0
+    for req in sorted(specs.glob("*/requirements.md")):
+        rel = req.relative_to(ROOT)
+        text = req.read_text(encoding="utf-8")
+
+        # REQ ID uniqueness (definitions only).
+        for m in REQ_DEF_RE.finditer(text):
+            rid = m.group(1)
+            count += 1
+            if rid in defined:
+                report.error(f"{rid} defined in both {defined[rid]} and {rel}")
+            else:
+                defined[rid] = str(rel)
+
+        # SPEC-03: EARS form expected somewhere in the file.
+        if "SHALL" not in text:
+            report.error(f"{rel}: no EARS acceptance criteria (no 'SHALL' found)")
+
+        # SPEC-04: governing rule references must resolve to a real steering ID.
+        for m in ANY_RULE_REF_RE.finditer(text):
+            if m.group(1) not in steering_ids:
+                report.error(f"{rel}: references unknown steering rule {m.group(1)}")
+
+    if defined:
+        print(f"context-lint: {len(defined)} requirement IDs across {len(set(defined.values()))} specs")
+    else:
+        print("context-lint: no requirement IDs found yet")
 
 
 def check_traceability(report: Report) -> None:
-    # Phase 2/4: ensure every REQ is covered by a task and vice versa.
-    print("context-lint: traceability check not implemented yet (phase 2)")
+    """SPEC-05: every REQ is covered by a task and every task REQ exists."""
+    specs = KIRO / "specs"
+    if not specs.is_dir():
+        print("context-lint: no specs yet (traceability check skipped)")
+        return
+
+    for spec_dir in sorted(p for p in specs.iterdir() if p.is_dir()):
+        req_file = spec_dir / "requirements.md"
+        task_file = spec_dir / "tasks.md"
+        if not req_file.exists():
+            continue
+
+        defined = {m.group(1) for m in REQ_DEF_RE.finditer(req_file.read_text(encoding="utf-8"))}
+        if not task_file.exists():
+            if defined:
+                report.error(f"{spec_dir.relative_to(ROOT)}: requirements exist but tasks.md is missing")
+            continue
+
+        referenced = set(REQ_ID_RE.findall(task_file.read_text(encoding="utf-8")))
+        for rid in sorted(defined - referenced):
+            report.error(f"{rid} is defined but not covered by any task in {task_file.relative_to(ROOT)}")
+        for rid in sorted(referenced - defined):
+            report.error(f"{task_file.relative_to(ROOT)}: task references unknown requirement {rid}")
 
 
 def check_skill(report: Report) -> None:
-    # Phase 3: validate .kiro/skills/*/SKILL.md frontmatter and references.
-    print("context-lint: skill check not implemented yet (phase 3)")
+    """Skill frontmatter + reference integrity (agentskills.io spec)."""
+    skills = KIRO / "skills"
+    if not skills.is_dir():
+        print("context-lint: no skills yet (skill check skipped)")
+        return
+
+    found = 0
+    for skill_md in sorted(skills.glob("*/SKILL.md")):
+        found += 1
+        rel = skill_md.relative_to(ROOT)
+        folder = skill_md.parent.name
+        fm, body = parse_frontmatter(skill_md.read_text(encoding="utf-8"))
+
+        name = fm.get("name", "")
+        if not name:
+            report.error(f"{rel}: missing 'name' in frontmatter")
+        else:
+            if name != folder:
+                report.error(f"{rel}: name '{name}' must match folder '{folder}'")
+            if not SKILL_NAME_RE.match(name):
+                report.error(f"{rel}: name '{name}' must be lowercase/digits/hyphens, <=64 chars")
+
+        desc = fm.get("description", "")
+        if not desc:
+            report.error(f"{rel}: missing 'description' in frontmatter")
+        elif len(desc) > 1024:
+            report.error(f"{rel}: description is {len(desc)} chars (max 1024)")
+
+        # Referenced bundled files (references/..., scripts/..., assets/...) must exist.
+        for m in re.finditer(r"\b((?:references|scripts|assets)/[^\s`)\]]+)", body):
+            if not (skill_md.parent / m.group(1)).exists():
+                report.error(f"{rel}: broken skill reference '{m.group(1)}'")
+
+    print(f"context-lint: {found} skill(s) checked")
 
 
 CHECKS = {
@@ -162,8 +267,37 @@ CHECKS = {
 }
 
 
+# Shell commands that would MUTATE a cloud estate (SEC-01). The guard scans the
+# raw PreToolUse payload, so it is robust to the exact JSON field names.
+MUTATION_RE = re.compile(
+    r"\baws\s+[\w-]+\s+(create|put|delete|update|attach|detach|modify|run|terminate|assume-role)"
+    r"|\baz\s+[\w-]+\s+(create|delete|update|set|assign)"
+    r"|\bgcloud\s+[\w-]+\s+(create|delete|update|set|add-iam-policy-binding)"
+    r"|\bterraform\s+(apply|destroy)",
+    re.IGNORECASE,
+)
+
+
+def run_guard() -> None:
+    """PreToolUse guard: block mutating cloud CLI commands (SEC-01). Exit 2 blocks."""
+    payload = sys.stdin.read() if not sys.stdin.isatty() else ""
+    m = MUTATION_RE.search(payload)
+    if m:
+        print(
+            "SEC-01: blocked a command that would mutate a cloud estate "
+            f"('{m.group(0)}'). Use Simulated mode (digital twin), or a probe with a "
+            "declared Authorization Scope (SEC-05).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    sys.exit(0)
+
+
 def main(argv: list[str]) -> None:
     cmd = argv[1] if len(argv) > 1 else "all"
+    if cmd == "guard":
+        run_guard()
+        return
     report = Report()
     if cmd == "all":
         for fn in CHECKS.values():

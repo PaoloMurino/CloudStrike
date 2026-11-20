@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Guard: no cloud mutation",
+      "description": "Blocks shell commands that would mutate a cloud estate (SEC-01); exit 2 denies the tool call.",
+      "trigger": "PreToolUse",
+      "matcher": "execute_bash|executeBash|.*[Ss]hell.*|.*[Cc]ommand.*",
+      "action": {
+        "type": "command",
+        "command": "python3 tools/context-lint/context_lint.py guard"
+      },
+      "timeout": 20
+    }
+  ]
+}

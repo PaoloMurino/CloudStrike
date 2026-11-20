@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Lint spec requirements on save",
+      "description": "Checks REQ-ID uniqueness, EARS criteria and governing-rule references in requirements.md.",
+      "trigger": "PostFileSave",
+      "matcher": "\\.kiro/specs/.*/requirements\\.md$",
+      "action": {
+        "type": "command",
+        "command": "python3 tools/context-lint/context_lint.py requirements"
+      },
+      "timeout": 30
+    }
+  ]
+}

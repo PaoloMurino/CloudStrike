@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Lint steering on save",
+      "description": "Validates steering frontmatter, rule-ID uniqueness and file refs when a steering file is saved.",
+      "trigger": "PostFileSave",
+      "matcher": "\\.kiro/steering/.*\\.md$",
+      "action": {
+        "type": "command",
+        "command": "python3 tools/context-lint/context_lint.py steering"
+      },
+      "timeout": 30
+    }
+  ]
+}

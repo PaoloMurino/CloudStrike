@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Stop consistency check",
+      "description": "Runs the full context-lint when the agent finishes; a failure prompts a correction turn.",
+      "trigger": "Stop",
+      "action": {
+        "type": "command",
+        "command": "python3 tools/context-lint/context_lint.py all"
+      },
+      "timeout": 60
+    }
+  ]
+}
